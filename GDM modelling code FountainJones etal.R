@@ -22,18 +22,57 @@ library(lubridate)
 library(tidyr)
 
 #----------------------------------------------------------------------------
+#Make resistance matrices with different levels of K
+#----------------------------------------------------------------------------
+
+for (i in 1:2)
+{
+  rasters = list.files("Environ_rasters")
+  rasters = rasters[which(grepl(paste0("b_"),rasters))]
+  rasters = gsub(".asc","",rasters)
+  envVariables = list()
+  resistances = list()
+  avgResistances = list()
+  c = 0
+  for (k in c(10,100,1000))
+  { #resistances
+    for (j in 1:length(rasters))
+    {
+      c = c+1
+      rast = raster(paste("Environ_rasters/",rasters[j],".asc",sep=""))
+      rast[rast[]<0] = 0
+      M = max(rast[], na.rm=T); rast[] = (rast[]*(k/M))+1
+      names(rast) = paste(rasters[j], "_k", k, sep="")
+      envVariables[[c]] = rast; names(envVariables[[c]]) = paste(rasters[j],"_k",k,sep="")
+      resistances[[c]] = TRUE; avgResistances[[c]] = TRUE
+    } #conductances
+    for (j in 1:length(rasters))
+    {
+      c = c+1
+      rast = raster(paste("Environ_rasters/", rasters[j],".asc",sep=""))
+      rast[rast[]<0] = 0
+      M = max(rast[], na.rm=T); rast[] = (rast[]*(k/M))+1
+      names(rast) = paste(rasters[j], "_k", k, sep="")
+      envVariables[[c]] = rast; names(envVariables[[c]]) = paste(rasters[j],"_k",k,sep="")
+      resistances[[c]] = FALSE; avgResistances[[c]] = FALSE
+    }
+  }}
+#checked worked
+plot(envVariables[[33]]) # 8(r), 24(c), 40(r), 56(c), 72(r), 88(c) FR host relatedne
+#----------------------------------------------------------------------------
+#HOST GENETIC RESISTANCE
 #make host genomic data a resistance surface layer for the Western Slope
 #----------------------------------------------------------------------------
 library(igraph)
 #load full host matrix
-dpsWS <- read.csv('ws_dps.csv', head=T)
+dpsWS <- read.csv('ws_dps.csv', head=T) 
 
 # Make undirected so that graph matrix will be symmetric
 gWS <- graph.data.frame(dpsWS , directed=FALSE)
 
 # add value as a weight attribute
-gmatWS <- get.adjacency(g, attr="prpshrd", sparse=FALSE)
-dim(gmat)
+gmatWS <- get.adjacency(gWS, attr="prpshrd", sparse=FALSE)
+dim(gmatWS)
 #1
 
 #load coords
@@ -46,22 +85,23 @@ duplicated(hostSpatialWS$latitude)
 hostSpatialWS <- hostSpatialWS[-c(30),] 
 hostSpatialWS <- hostSpatialWS[-c(77),] 
 #add a small ammount of noise to a individual sampled at the same longitude
-hostSpatial$latitude[28] <- hostSpatial$longitude[28] +0.0001
+hostSpatialWS$latitude[28] <- hostSpatialWS$latitude[28] +0.0001
+hostSpatialWS$longitude[28] <- hostSpatialWS$longitude[28] +0.0001
+dspWS <- SpatialPoints(hostSpatialWS[,c("longitude","latitude")])
 
-dspWS <- SpatialPoints(hostSpatial[,c("longitude","latitude")])
-
-dim(dpsWSmat)
+dim(dpsWS)
 
 #mkrig to relate spatial data to genomic data
-tpsWS <- mKrig(coordinates(dspWS),gmat , find.trA =T,  na.rm=TRUE)
+tpsWS <- mKrig(coordinates(dspWS),gmatWS , find.trA =T,  na.rm=TRUE)
 
-#this is one of the rasters from our data set - should I resent the raster vaules Simon?
-tpsInterp <- interpolate(envVariables[[2]], tpsWS)
+#this is one of the rasters from our data set - should I resend the raster vaules Simon?
+tpsInterp <- interpolate(envVariables[[2]], tpsWS) #envVariables in this case sets the ratser spatial coordinates
 
 plot(tpsInterp)
 str(hostGenWSraw)
 
-writeRaster(tpsInterp, "TPS_interpolationWS.asc") 
+writeRaster(tpsInterp, "TPS_interpolationWS.asc") # this raster was then taken 
+#and run through the circuitscape process externally to R
 
 #make host genomic data a resistance surface layer for the FR
 
@@ -108,42 +148,6 @@ str(hostGenWSraw)
 #need to add path to EnvironRasters
 writeRaster(tpsInterpFR, "TPS_interpolationFR.asc", overwrite=T)
 
-#different k (these matrices are already)
-
-for (i in 1:2)
-{
-  rasters = list.files("Environ_rasters")
-  rasters = rasters[which(grepl(paste0("b_"),rasters))]
-  rasters = gsub(".asc","",rasters)
-  envVariables = list()
-  resistances = list()
-  avgResistances = list()
-  c = 0
-  for (k in c(10,100,1000))
-  { #resistances
-    for (j in 1:length(rasters))
-    {
-      c = c+1
-      rast = raster(paste("Environ_rasters/",rasters[j],".asc",sep=""))
-      rast[rast[]<0] = 0
-      M = max(rast[], na.rm=T); rast[] = (rast[]*(k/M))+1
-      names(rast) = paste(rasters[j], "_k", k, sep="")
-      envVariables[[c]] = rast; names(envVariables[[c]]) = paste(rasters[j],"_k",k,sep="")
-      resistances[[c]] = TRUE; avgResistances[[c]] = TRUE
-    } #conductances
-    for (j in 1:length(rasters))
-    {
-      c = c+1
-      rast = raster(paste("Environ_rasters/", rasters[j],".asc",sep=""))
-      rast[rast[]<0] = 0
-      M = max(rast[], na.rm=T); rast[] = (rast[]*(k/M))+1
-      names(rast) = paste(rasters[j], "_k", k, sep="")
-      envVariables[[c]] = rast; names(envVariables[[c]]) = paste(rasters[j],"_k",k,sep="")
-      resistances[[c]] = FALSE; avgResistances[[c]] = FALSE
-    }
-  }}
-#checked worked
-plot(envVariables[[33]]) # 8(r), 24(c), 40(r), 56(c), 72(r), 88(c) FR host relatedness
 #write files
 
 envWSnoSite <-envWSnoSite[,c(2,1)] #change long/lat around
@@ -155,36 +159,6 @@ write.table(envFR, "FRlongLat_test.txt")
 write.table(envWSnoSite, "FRlongLat_test.txt")
 
 writeRaster(envVariables[[33]], filename="ap_100.asc", datatype='ascii', overwrite=TRUE)
-
-#everything from here to 189 is potentially useful but not incorporated
-#-------------------------------------------------------
-test <- 14
-resistances_cs <- list()
-for (i, in test)#length(envVariables)))
-{circuitScape(i,
-              names(paste[i], "cs", sep="_"),
-              resistance = TRUE,
-              avgResistance = TRUE,
-              fourCells = FALSE,
-              fromCoor,
-              toCoor,
-              OS = "Windows",
-              prefix = "",
-              ID = "",
-              nberOfCores_CS=1)
-  resistances_cs[[i]]}
-
-test <- circuitScape(envVariables[[6]],
-                     names(test1_cs),
-                     resistance = TRUE,
-                     avgResistance = TRUE,
-                     fourCells = FALSE,
-                     fromCoor,
-                     toCoor,
-                     OS = "Windows",
-                     prefix = "",
-                     ID = "",
-                     nberOfCores_CS=1)
 
 
 #-------------------------------------------------------------------#
@@ -206,6 +180,7 @@ commFRdist <-  read.csv("PatristicDistanceFRMay2019noLabels.csv", header = FALSE
 commFR <- sqrt(commFRdist) #sqrt transform comm matrix improve matrix properties (Vienee et al 2011)
 commFRDissim <- (commFR/max(commFR)) #make into a dissimilarity
 
+#write.csv(commFRDissim, "commFRDissim.csv" ) #make this a csv file for MLPE analysis
 #have to cloumn bind to sites
 
 commFR <- cbind(SitesFR, commFRDissim)
@@ -289,6 +264,7 @@ str(envFRnoSite)
 #turn coordinates into distances
 SpatialDistFR <- as.data.frame(pointDist(envFRnoSite, distFunct = NULL, longLat = c( 'Long', 'Lat')))
 
+#write.csv(SpatialDistFR, "SpatialDistFR.csv", row.names=FALSE) #for MLPE analysis
 #turn into a dissim matrix for Mantel tests
 SpatialDistFRdissim <- (SpatialDistFR/max(SpatialDistFR))
 
@@ -378,42 +354,42 @@ commWSdist <-  read.csv("PatristicDistanceWSMay2019nolabels.csv", header = FALSE
 #convert to dissim
 commWS <- sqrt(commWSdist) #sqrt transform comm matrix improve matrix properties (Vienee et al 2011)
 commWSdissim <- (commWS/max(commWS))
-
+write.csv(commWSdissim , "commWSdissim.csv ")
 #add sites to the com matrix
 commWS <- cbind(SitesWS, commWSdissim)
 
 #predictor matrices (with model 4)
 
-EVIWS<- read.csv("EVIWS.csv", header = FALSE)
-EVIWS <- (EVIWS/max(EVIWS))
+EVIWSraw<- read.csv("EVIWS.csv", header = FALSE)
+EVIWS <- (EVIWSraw/max(EVIWSraw))
 EVIWS<- cbind(SitesWS, EVIWS)
 
-ccWS <- read.csv("ccWS.csv", header = FALSE)
-ccWS <- (ccWS/max(ccWS))
+ccWSraw <- read.csv("ccWS.csv", header = FALSE)
+ccWS <- (ccWSraw/max(ccWSraw))
 ccWS <- cbind(SitesWS, ccWS)
 
-impWS <- read.csv("impWS.csv", header = FALSE)
-impWS <- (impWS/max(impWS))
+impWSraw <- read.csv("impWS.csv", header = FALSE)
+impWS <- (impWSraw/max(impWSraw))
 impWS <- cbind(SitesWS, impWS)
 
-lcWS <- read.csv("lcWS.csv", header = FALSE)
-lcWS <- (lcWS/max(lcWS))
+lcWSraw <- read.csv("lcWS.csv", header = FALSE)
+lcWS <- (lcWSraw/max(lcWSraw))
 lcWS <- cbind(SitesWS, lcWS)
 
-tempWS<- read.csv("tempWS.csv", header = FALSE)
-tempWS <- (tempWS/max(tempWS))
+tempWSraw<- read.csv("tempWS.csv", header = FALSE)
+tempWS <- (tempWSraw/max(tempWSraw))
 tempWS<- cbind(SitesWS, tempWS)
 
 roadsWS <- read.csv("roadsWS.csv", header = FALSE)
 roadsWS <- (roadsWS/max(roadsWS))
 roadsWS <- cbind(SitesWS, roadsWS)
 
-strmsWS <- read.csv("strmsWS.csv", header = FALSE)
-strmsWS <- (strmsWS/max(strmsWS))
+strmsWSraw <- read.csv("strmsWS.csv", header = FALSE)
+strmsWS <- (strmsWSraw/max(strmsWSraw))
 strmsWS <- cbind(SitesWS, strmsWS)
 
-tpWS<- read.csv("tpWS.csv", header = FALSE)
-tpWS<- (tpWS/max(tpWS))
+tpWSraw<- read.csv("tpWS.csv", header = FALSE)
+tpWS<- (tpWSraw/max(tpWSraw))
 tpWS<- cbind(SitesWS, tpWS)
 
 hostGenWSraw <- read.csv("WSHostGen1.csv", header = FALSE)
@@ -427,32 +403,6 @@ WShostGen <- cbind(SitesWS, WShostGenCSdissim)
 #Landscape data (predictor vectors)
 envWSnoSite<- read.csv("WSenv.csv", header = TRUE) 
 envWS<- cbind(SitesWS, envWSnoSite)
-
-#-------------------------------------------------------------------#
-############Weighting variables by space #######################
-#-------------------------------------------------------------------#
-
-#weighted host genetic distance
-library(enmSdm)
-
-#remove non-spatial data
-envWSnoSite$Year <- NULL
-str(envWSnoSite)
-
-#turn coordinates into distances
-SpatialDistWS <- as.data.frame(pointDist(envWSnoSite, distFunct = NULL, longLat = c( 'Long', 'Lat')))
-
-#turn into a dissim matrix for Mantel tests
-SpatialDistWSdissim <- (SpatialDistWS/max(SpatialDistWS))
-
-#elementwise weighting of host genetic data (Haddamard product)
-WeightedHostGenWS <- hostGenWSraw   *  SpatialDistWS
- 
-#turn into a dissim
-WeightedHostGenWSdissim <- (WeightedHostGenWS/max(WeightedHostGenWS))
-WeightedHostGenWS <- cbind(SitesWS, WeightedHostGenWSdissim )
-
-# high correlation with spatial data (Mantel p = 0.95) - so not appropriate
 
 #-------------------------------------------------------------------#
 ############ Mantel tests #######################
@@ -484,6 +434,8 @@ gdMTabwmatrixWS <- formatsitepair(gdmTabWS, bioFormat=4, siteColumn="Site", pred
 
 #reduced formulation as per Trumbo et al 2019
 gdMTabwmatrixWS <- formatsitepair(gdmTabWS, bioFormat=4, siteColumn="Site", predData=envWS, distPreds=list(strmsWS, roadsWS, tempWS, ccWS, hostGenWS, WShostGen))
+
+gdMTabwmatrixWS <- formatsitepair(gdmTabWS, bioFormat=4, siteColumn="Site", predData=envWS, distPreds=list(strmsWS))
 
 
 #run the analysis. Splines = null etc means that you accet the default three
@@ -524,10 +476,139 @@ library(reshape2)
 dev<-  read.csv("Heatmap.csv", header = T)
 dev.m <- melt(dev)
 str(dev.m)
-p <- ggplot(dev.m, aes(x=variable,y=X, fill=value) 
+p <- ggplot(dev.m, aes(x=variable,y=X, fill=value)) 
             
-p <- p+geom_tile(aes(colour = "white", size = 0.1)
+p <- p+geom_tile(aes(colour = "white", size = 0.1))
 p <- ggplot(dev.m, aes(x=variable,y=X) ) + geom_tile(aes(fill = value, width = .1), colour = "grey") + scale_fill_gradient(low = "white",high = "red")
 base_size <- 9
 p + theme_grey(base_size = base_size) + labs(x = "", y = "")+ scale_x_discrete(expand = c(0, 0)) + scale_y_discrete(expand = c(0, 0))+theme( axis.ticks = element_blank(), axis.text.x = element_text(size = base_size *0.8,  hjust = 0, colour = "grey50")+ theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), panel.background = element_blank()))
 
+#-------------------------------------------------------------------#
+#-----------Is FIV prevalence different in each study area? #########
+#-------------------------------------------------------------------#
+
+res <- prop.test(x = c(43, 40), n = c(74, 97))
+# Printing the results
+res 
+
+#-------------------------------------------------------------------#
+#-----------MLPE #########
+#-------------------------------------------------------------------#
+#to add resistanceGA
+
+## Code to fit MLPE models
+
+library(ResistanceGA)
+library(AICcmodavg)
+library(MuMIn)
+library(lme4)
+
+
+#---------------------------------
+#For the Western Slope
+#---------------------------------
+csv_files <- list.files("WS_orig_resistance", ".csv", full.names = T)
+csv_files #point the analysis to the folder where the resistance surfaces are
+commDiss <- read.csv(csv_files[3])[,-1] 
+
+csv_list <- lapply(csv_files[-3], read.csv, header = F)) %>%
+  lapply(., lower)
+
+names(csv_list) <- basename(csv_files[-3]) %>% sub('.csv', "", .)
+
+id <- To.From.ID(nrow(commDiss))
+
+df <- scale(do.call(cbind, csv_list)) %>% as.data.frame()
+df$commDiss <- lower(commDiss)
+df$pop <- id$pop1
+
+mlpe_list <- vector('list', length(csv_list))
+names(mlpe_list) <- names(csv_list)
+for(i in 1:length(mlpe_list)){
+  mlpe_list[[i]] <- mlpe_rga(commDiss ~ df[,i] + (1|pop),
+                             data = df,
+                             REML = F)
+}
+
+mod_sel <- AICcmodavg::bictab(mlpe_list,
+                   modnames = names(mlpe_list),
+                   nobs = nrow(commDiss))
+
+
+multivariate <- mlpe_rga(commDiss ~ EVIWS  +roadsWS + apWS + (1|pop),
+                         data = df,
+                         REML = F, na.action = na.fail)
+
+#multivariate
+library(cAIC4)
+multi_step <- stepcAIC(multivariate, direction = "both", trace = TRUE, data = df, groupCandidates=c("pop"))
+
+
+#---------------------------------
+#For the Front Range
+#---------------------------------
+csv_files_FR <- list.files("FR_orig_resistance", ".csv", full.names = T) 
+
+csv_files_FR#point the analysis to the folder where the resistance surfaces are
+
+commDiss_FR <- read.csv(csv_files_FR[2])[,-1] 
+
+csv_list_FR <- lapply(csv_files_FR[-2], read.csv, header = F) %>%
+  lapply(., lower)
+
+names(csv_list_FR) <- basename(csv_files_FR[-2]) %>% sub('.csv', "", .)
+
+id_FR <- To.From.ID(nrow(commDiss_FR))
+
+df_FR <- scale(do.call(cbind, csv_list_FR)) %>% as.data.frame()
+df_FR$commDiss_FR <- lower(commDiss_FR)
+df_FR$pop <- id_FR$pop1
+
+mlpe_list_FR <- vector('list', length(csv_list_FR))
+names(mlpe_list_FR) <- names(csv_list_FR)
+for(i in 1:length(mlpe_list_FR)){
+  mlpe_list_FR[[i]] <- mlpe_rga(commDiss_FR ~ df_FR[,i] + (1|pop),
+                             data = df_FR,
+                             REML = F)
+}
+
+mod_sel_FR <- AICcmodavg::bictab(mlpe_list_FR,
+                              modnames = names(mlpe_list_FR),
+                              nobs = nrow(commDiss_FR))
+mod_sel_FR 
+
+#all variable from univariate analysis within 2 AIC
+multivariate_FR <- mlpe_rga(commDiss_FR ~ roadsFR  +FRHostGen+ tpFR  + SpatialDistFR+ strmsFR + (1|pop),
+                         data = df_FR,
+                         REML = F, na.action = na.fail)
+
+#multivariate
+library(cAIC4)
+multi_step_FR <- stepcAIC(multivariate_FR, direction = "both", trace = TRUE, data = df, groupCandidates=c("pop"))
+
+#-------------------------------------------------------------------#
+############Weighting variables by space (not used in manuscript) #######################
+#-------------------------------------------------------------------#
+
+#weighted host genetic distance
+library(enmSdm) #not working right - some conflict with raster
+
+#remove non-spatial data
+envWSnoSite$Year <- NULL
+str(envWSnoSite)
+
+#turn coordinates into distances
+SpatialDistWS <- as.data.frame(pointDist(envWSnoSite, distFunct = NULL, longLat = c( 'Long', 'Lat')))
+
+#write.csv(SpatialDistWS, "SpatialDistWS.csv", row.names=FALSE) #for MLPE analysis
+#turn into a dissim matrix for Mantel tests
+SpatialDistWSdissim <- (SpatialDistWS/max(SpatialDistWS))
+
+#elementwise weighting of host genetic data (Haddamard product)
+WeightedHostGenWS <- hostGenWSraw   *  SpatialDistWS
+
+#turn into a dissim
+WeightedHostGenWSdissim <- (WeightedHostGenWS/max(WeightedHostGenWS))
+WeightedHostGenWS <- cbind(SitesWS, WeightedHostGenWSdissim )
+
+# high correlation with spatial data (Mantel p = 0.95) - so not appropriate
