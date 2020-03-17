@@ -240,6 +240,7 @@ FRhostGenCSdissim <-  (FRhostGenCSraw/max(FRhostGenCSraw))
 FRhostGen <- cbind(SitesFR, FRhostGenCSdissim)
 
 FRhostGenCSrawCond <- read.csv('FRhostCScond.csv', header= FALSE)
+write.csv(FRhostGenCSrawCond, "FRhostGenCSrawCond.csv")
 FRhostGenCondSdissim <-  (FRhostGenCSrawCond/max(FRhostGenCSrawCond))                      
 FRhostGenCond <- cbind(SitesFR, FRhostGenCondSdissim )
 #there are some individuals super connected (really low restance values 0.00001)
@@ -287,11 +288,11 @@ library(vegan)
 mantel(tempFRdissim , SpatialDistFRdissim,  method="pearson", permutations=999) 
 
 #very high correlation in the FR (0.99) no not include in final model
-mantel(WeightedHostGenFRdissim , commFRDissim,  method="pearson", permutations=999) 
+mantel(WShostGenCSraw, roadsWS  ,  method="pearson", permutations=999) 
 
 mantel(apFRdissim100 , apFRdissim10, method="pearson", permutations=999)
-mantel(hostGenFRDisim , FRhostGenCondSdissim1000 , method="pearson", permutations=999)
-mantel(tempFRdissim , commFRDissim,  method="pearson", permutations=999) 
+mantel(WShostGenC , WShostGen , method="pearson", permutations=999)
+mantel(WShostGenC, commWSdist,  method="pearson", permutations=999) 
 
 #-------------------------------------------------------------------#
 #-----------Prepare GDM site-pair tables#######################
@@ -398,7 +399,7 @@ hostGenWS <- cbind(SitesWS, hostGenWSdissim)
 
 WShostGenCSraw <- read.csv('WShostCS.csv', header= FALSE)
 WShostGenCSdissim <-  (WShostGenCSraw/max(WShostGenCSraw))                      
-WShostGen <- cbind(SitesWS, WShostGenCSdissim)
+WShostGenC <- cbind(SitesWS, WShostGenCSdissim)
   
 #Landscape data (predictor vectors)
 envWSnoSite<- read.csv("WSenv.csv", header = TRUE) 
@@ -511,7 +512,7 @@ csv_files <- list.files("WS_orig_resistance", ".csv", full.names = T)
 csv_files #point the analysis to the folder where the resistance surfaces are
 commDiss <- read.csv(csv_files[3])[,-1] 
 
-csv_list <- lapply(csv_files[-3], read.csv, header = F)) %>%
+csv_list <- lapply(csv_files[-3], read.csv, header = F) %>%
   lapply(., lower)
 
 names(csv_list) <- basename(csv_files[-3]) %>% sub('.csv', "", .)
@@ -525,7 +526,7 @@ df$pop <- id$pop1
 mlpe_list <- vector('list', length(csv_list))
 names(mlpe_list) <- names(csv_list)
 for(i in 1:length(mlpe_list)){
-  mlpe_list[[i]] <- mlpe_rga(commDiss ~ df[,i] + (1|pop),
+  mlpe_list[[i]] <- mlpe_rga(commDiss ~ scale(df[,i]) + (1|pop),
                              data = df,
                              REML = F)
 }
@@ -533,15 +534,24 @@ for(i in 1:length(mlpe_list)){
 mod_sel <- AICcmodavg::bictab(mlpe_list,
                    modnames = names(mlpe_list),
                    nobs = nrow(commDiss))
+mod_sel
 
-
-multivariate <- mlpe_rga(commDiss ~ EVIWS  +roadsWS + apWS + (1|pop),
+m1 <- mlpe_rga(commDiss ~ WShostCS  +roadsWS +  (1|pop),
                          data = df,
                          REML = F, na.action = na.fail)
 
+m2 <- mlpe_rga(commDiss ~ WShostCS +  (1|pop),
+               data = df,
+               REML = F, na.action = na.fail)
+
+m3 <- mlpe_rga(commDiss ~ roadsWS +  (1|pop),
+               data = df,
+               REML = F, na.action = na.fail)
+
+multi_listWS <- as.list(m1,m2,m3)
+dredge(m1,m2,m3)
+
 #multivariate
-library(cAIC4)
-multi_step <- stepcAIC(multivariate, direction = "both", trace = TRUE, data = df, groupCandidates=c("pop"))
 
 
 #---------------------------------
@@ -567,7 +577,7 @@ df_FR$pop <- id_FR$pop1
 mlpe_list_FR <- vector('list', length(csv_list_FR))
 names(mlpe_list_FR) <- names(csv_list_FR)
 for(i in 1:length(mlpe_list_FR)){
-  mlpe_list_FR[[i]] <- mlpe_rga(commDiss_FR ~ df_FR[,i] + (1|pop),
+  mlpe_list_FR[[i]] <- mlpe_rga(commDiss_FR ~ scale(df_FR[,i]) + (1|pop),
                              data = df_FR,
                              REML = F)
 }
