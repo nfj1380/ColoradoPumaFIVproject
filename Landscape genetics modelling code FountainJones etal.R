@@ -1,10 +1,10 @@
 #-------------------------------------------------------------------#
-############GDM modelling#######################
+############ Landscape genetics/phylodynamics analysis pipeline modelling#######################
 #-------------------------------------------------------------------#
 
 
-#Authors: Nick Fountain-Jones (nfj@umn.edu) & Simon Dellicour 
-#Date May 2019
+#Authors: Nick Fountain-Jones (nfj@umn.edu), Erick Gagne & Simon Dellicour 
+#Date April 2020
 
 #prelims
 rm(list = ls())
@@ -59,9 +59,95 @@ for (i in 1:2)
   }}
 #checked worked
 plot(envVariables[[33]]) # 8(r), 24(c), 40(r), 56(c), 72(r), 88(c) FR host relatedne
+
+#----------------------------------------------------------------------------
+
+#ResiastanceGA routine to optimize resistance/conductance surfaces absed on host genetic distance
+
+#----------------------------------------------------------------------------
+
+library(devtools)
+# devtools::install_github("wpeterman/ResistanceGA", build_vignettes=T)
+
+library(doMC)
+library(raster)
+library(ResistanceGA)
+
+# note: you cannot have any space " " in getwd() !!
+# to do: sudo chmod 755 /usr/local/bin/csrun.py
+
+files = list.files("Original_rasters_1")
+for (i in 1:length(files))
+{
+  if (i == 1)
+  {
+    template = raster(paste0("Original_rasters_1/",files[i]))
+    writeRaster(template,paste0("Original_rasters_2/",files[i]), overwrite=T)
+  }	else		{
+    rast = raster(paste0("Original_rasters_1/",files[i]))
+    if ((dim(rast)[1]==dim(template)[1])&(dim(rast)[2]==dim(template)[2]))
+    {
+      extent(rast) = extent(template)
+    }	else	{
+      rast = resample(rast, template)
+    }
+    writeRaster(rast,paste0("Original_rasters_2/",files[i]), overwrite=T)
+  }	
+}
+
+datasets = c("FR","WS")
+rastersToDiscard = c("b_HostWS.asc","b_HostFR.asc")
+
+# 1. Univariate analyses
+
+for (i in 1:length(datasets))
+{
+  samples = read.csv(paste0(datasets[i],"_coordinates.csv"), header=T)[,2:1]
+  write.table(samples, paste0(datasets[i],"_coordinates.txt"), sep="\t", col.names=F, quote=F)
+  samplingPoints = SpatialPoints(samples)
+  geneticDistances = read.csv(paste0(datasets[i],"_host_dgen.csv"), header=F)
+  geneticDistances = geneticDistances[lower.tri(geneticDistances)]
+  CS_Point.File = paste0(datasets[i],"_coordinates.txt")
+  CS.program = "'/usr/local/bin/csrun.py'"
+  files = list.files("Original_rasters_2")
+  files = files[which(files!=rastersToDiscard[i])]
+  registerDoMC(cores=8); buffer = list()
+  buffer = foreach(j = 1:length(files)) %dopar% {
+    # for (j in 1:length(files)) {
+    rast = raster(paste0("Original_rasters_2/",files[j]))
+    resultsDir = paste0(getwd(),"/ResistanceGA_",datasets[i],"/",names(rast),"/"); dir.create(resultsDir, showWarnings=F)
+    GA.inputs = GA.prep(ASCII.dir=rast, Results.dir=resultsDir, method="AIC", select.trans="A")
+    CS.inputs = CS.prep(n.Pops=length(samplingPoints), response=geneticDistances, CS_Point.File=CS_Point.File, CS.program=CS.program, platform="other")
+    SS_result = SS_optim(CS.inputs=CS.inputs, GA.inputs=GA.inputs); # plot(SS_result)
+    j
+  }
+}
+
+# 2. Multivariate analyses
+
+for (i in 1:length(datasets))
+{
+  samples = read.csv(paste0(datasets[i],"_coordinates.csv"), header=T)[,2:1]
+  write.table(samples, paste0(datasets[i],"_coordinates.txt"), sep="\t", col.names=F, quote=F)
+  samplingPoints = SpatialPoints(samples)
+  geneticDistances = read.csv(paste0(datasets[i],"_host_dgen.csv"), header=F)
+  geneticDistances = geneticDistances[lower.tri(geneticDistances)]
+  CS_Point.File = paste0(datasets[i],"_coordinates.txt")
+  CS.program = "'/usr/local/bin/csrun.py'"
+  files = list.files("Original_rasters_2"); stack = list()
+  files = files[which(files!=rastersToDiscard[i])]
+  for (j in 1:length(files)) stack[[j]] = raster(paste0("Original_rasters_2/",files[j]))
+  stack = stack(stack); resultsDir = paste0(getwd(),"/ResistanceGA_",datasets[i],"/")
+  GA.inputs = GA.prep(ASCII.dir=stack, Results.dir=resultsDir, method="AIC")
+  CS.inputs = CS.prep(n.Pops=length(samplingPoints), response=geneticDistances, CS_Point.File=CS_Point.File, CS.program=CS.program, platform="other")
+  MM_result = SS_optim(CS.inputs=CS.inputs, GA.inputs=GA.inputs); plot(MM_result)
+}
+
+
+
 #----------------------------------------------------------------------------
 #HOST GENETIC RESISTANCE
-#make host genomic data a resistance surface layer for the Western Slope
+#make host genomic data a resistance surface layer 
 #----------------------------------------------------------------------------
 library(igraph)
 #load full host matrix
@@ -165,7 +251,7 @@ writeRaster(envVariables[[33]], filename="ap_100.asc", datatype='ascii', overwri
 ####################Constructing GDM #######################
 #-------------------------------------------------------------------#
 
-####---------------------FR--------------------------##########
+####---------------------WUI--------------------------##########
 library(gdm)
 
 #-------------------------------------------------------------------#
@@ -252,29 +338,6 @@ FRhostGenCond1000 <- cbind(SitesFR, FRhostGenCondSdissim1000 )
 envFRnoSite <- read.csv("envFR.csv", header = TRUE) 
 envFR<- cbind(SitesFR, envFRnoSite)
 
-#-------------------------------------------------------------------#
-############Weighting variables by space #######################
-#-------------------------------------------------------------------#
-
-#weighted host genetic distance
-library(enmSdm)
-#remove non-spatial data
-envFRnoSite$Year <- NULL
-str(envFRnoSite)
-
-#turn coordinates into distances
-SpatialDistFR <- as.data.frame(pointDist(envFRnoSite, distFunct = NULL, longLat = c( 'Long', 'Lat')))
-
-#write.csv(SpatialDistFR, "SpatialDistFR.csv", row.names=FALSE) #for MLPE analysis
-#turn into a dissim matrix for Mantel tests
-SpatialDistFRdissim <- (SpatialDistFR/max(SpatialDistFR))
-
-#elementwise weighting of genetic data
-WeightedHostGenFR <- hostGenFRraw   *  SpatialDistFR
-
-#turn into a dissim
-WeightedHostGenFRdissim <- (WeightedHostGenFR/max(WeightedHostGenFR))
-WeightedHostGenFR <- cbind(SitesFR, WeightedHostGenFRdissim )
 
 
 #-------------------------------------------------------------------#
@@ -344,7 +407,7 @@ par(mfrow = c(1,1)) #resets par
 barplot(sort(mod.testFR[[2]][,1], decreasing=T))
 
 
-####---------------------WS--------------------------##########
+####---------------------UB--------------------------##########
 
 #load data sets
 
@@ -493,7 +556,8 @@ res <- prop.test(x = c(43, 40), n = c(74, 97))
 res 
 
 #-------------------------------------------------------------------#
-#-----------MLPE #########
+#-----------MLPE----------------#
+# Thanks to Robert Peterman for helping with this code
 #-------------------------------------------------------------------#
 #to add resistanceGA
 
@@ -506,7 +570,7 @@ library(lme4)
 
 
 #---------------------------------
-#For the Western Slope
+#For the UB
 #---------------------------------
 csv_files <- list.files("WS_orig_resistance", ".csv", full.names = T)
 csv_files #point the analysis to the folder where the resistance surfaces are
@@ -555,7 +619,7 @@ dredge(m1,m2,m3)
 
 
 #---------------------------------
-#For the Front Range
+#For the WUI
 #---------------------------------
 csv_files_FR <- list.files("FR_orig_resistance", ".csv", full.names = T) 
 
