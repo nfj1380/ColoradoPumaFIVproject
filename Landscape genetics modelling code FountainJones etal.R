@@ -1,5 +1,5 @@
 #-------------------------------------------------------------------#
-############ Landscape genetics/phylodynamics analysis pipeline modelling#######################
+############ Landscape genetics/phylodynamics analysis pipeline #######################
 #-------------------------------------------------------------------#
 
 
